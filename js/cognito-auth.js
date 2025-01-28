@@ -7,7 +7,8 @@ var WildRydes = window.WildRydes || {};
 
     var poolData = {
         UserPoolId: _config.cognito.userPoolId,
-        ClientId: _config.cognito.userPoolClientId
+        ClientId: _config.cognito.userPoolClientId,
+        ClientSecret: _config.cognito.userPoolClientSecret  // Add client secret here
     };
 
     var userPool;
@@ -47,10 +48,18 @@ var WildRydes = window.WildRydes || {};
         }
     });
 
-
     /*
      * Cognito User Pool functions
      */
+
+    function calculateSecretHash(username, clientSecret, clientId) {
+        var crypto = window.crypto || window.msCrypto; // For compatibility
+        var encoder = new TextEncoder();
+        var data = encoder.encode(username + clientId);
+        return crypto.subtle.importKey("raw", new TextEncoder().encode(clientSecret), { name: "HMAC", hash: { name: "SHA-256" } }, false, ["sign"])
+            .then(key => crypto.subtle.sign("HMAC", key, data))
+            .then(signature => btoa(String.fromCharCode.apply(null, new Uint8Array(signature))));
+    }
 
     function register(email, password, onSuccess, onFailure) {
         var dataEmail = {
@@ -59,21 +68,23 @@ var WildRydes = window.WildRydes || {};
         };
         var attributeEmail = new AmazonCognitoIdentity.CognitoUserAttribute(dataEmail);
 
-        userPool.signUp(toUsername(email), password, [attributeEmail], null,
-            function signUpCallback(err, result) {
-                if (!err) {
-                    onSuccess(result);
-                } else {
-                    onFailure(err);
-                }
+        // Calculate the secret hash for registration
+        var secretHash = calculateSecretHash(email, _config.cognito.userPoolClientSecret, _config.cognito.userPoolClientId);
+
+        userPool.signUp(toUsername(email), password, [attributeEmail], null, function signUpCallback(err, result) {
+            if (!err) {
+                onSuccess(result);
+            } else {
+                onFailure(err);
             }
-        );
+        });
     }
 
     function signin(email, password, onSuccess, onFailure) {
         var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails({
             Username: toUsername(email),
-            Password: password
+            Password: password,
+            SecretHash: calculateSecretHash(email, _config.cognito.userPoolClientSecret, _config.cognito.userPoolClientId)  // Add SecretHash
         });
 
         var cognitoUser = createCognitoUser(email);
