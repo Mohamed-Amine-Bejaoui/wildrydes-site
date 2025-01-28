@@ -8,7 +8,7 @@ var WildRydes = window.WildRydes || {};
     var poolData = {
         UserPoolId: _config.cognito.userPoolId,
         ClientId: _config.cognito.userPoolClientId,
-        ClientSecret: _config.cognito.userPoolClientSecret  // Add client secret here
+        ClientSecret: _config.cognito.userPoolClientSecret  // Ensure the secret is configured here
     };
 
     var userPool;
@@ -69,29 +69,36 @@ var WildRydes = window.WildRydes || {};
         var attributeEmail = new AmazonCognitoIdentity.CognitoUserAttribute(dataEmail);
 
         // Calculate the secret hash for registration
-        var secretHash = calculateSecretHash(email, _config.cognito.userPoolClientSecret, _config.cognito.userPoolClientId);
-
-        userPool.signUp(toUsername(email), password, [attributeEmail], null, function signUpCallback(err, result) {
-            if (!err) {
-                onSuccess(result);
-            } else {
-                onFailure(err);
-            }
-        });
+        calculateSecretHash(email, _config.cognito.userPoolClientSecret, _config.cognito.userPoolClientId)
+            .then(secretHash => {
+                userPool.signUp(toUsername(email), password, [attributeEmail], null, function signUpCallback(err, result) {
+                    if (!err) {
+                        onSuccess(result);
+                    } else {
+                        onFailure(err);
+                    }
+                });
+            })
+            .catch(onFailure);
     }
 
     function signin(email, password, onSuccess, onFailure) {
-        var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails({
-            Username: toUsername(email),
-            Password: password,
-            SecretHash: calculateSecretHash(email, _config.cognito.userPoolClientSecret, _config.cognito.userPoolClientId)  // Add SecretHash
-        });
+        // Calculate the secret hash for sign-in
+        calculateSecretHash(email, _config.cognito.userPoolClientSecret, _config.cognito.userPoolClientId)
+            .then(secretHash => {
+                var authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails({
+                    Username: toUsername(email),
+                    Password: password,
+                    SecretHash: secretHash  // Include the SECRET_HASH
+                });
 
-        var cognitoUser = createCognitoUser(email);
-        cognitoUser.authenticateUser(authenticationDetails, {
-            onSuccess: onSuccess,
-            onFailure: onFailure
-        });
+                var cognitoUser = createCognitoUser(email);
+                cognitoUser.authenticateUser(authenticationDetails, {
+                    onSuccess: onSuccess,
+                    onFailure: onFailure
+                });
+            })
+            .catch(onFailure);
     }
 
     function verify(email, code, onSuccess, onFailure) {
